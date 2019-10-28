@@ -13,6 +13,8 @@ import { BagHeader, ChunkInfo, Connection, MessageData } from "./record";
 import type { Time } from "./types";
 import * as TimeUtil from "./TimeUtil";
 
+import { bagConnectionsToTopics, bagConnectionsToDatatypes } from "./BagConnectionsHelper";
+
 export type ReadOptions = {|
   decompress?: Decompress,
   noParse?: boolean,
@@ -69,6 +71,22 @@ export default class Bag {
       this.startTime = this.chunkInfos[0].startTime;
       this.endTime = this.chunkInfos[chunkCount - 1].endTime;
     }
+  }
+
+  getRosbagInfo() {
+    const startTime = this.startTime || { sec: 0, nsec: 0 };
+    const endTime = this.endTime || { sec: 0, nsec: 0 };
+    const connections = ((Object.values(this.connections): any): Connection[]);
+
+    return {
+      version: "2.0",
+      duration: TimeUtil.sub(endTime, startTime),
+      start: TimeUtil.toDate(startTime).toString(),
+      end: TimeUtil.toDate(endTime).toString(),
+      chunkNum: this.header.chunkCount,
+      topics: bagConnectionsToTopics(connections),
+      types: bagConnectionsToDatatypes(connections),
+    };
   }
 
   async readMessages(opts: ReadOptions, callback: (msg: ReadResult<any>) => void) {
