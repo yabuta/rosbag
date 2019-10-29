@@ -13,7 +13,7 @@ import { BagHeader, ChunkInfo, Connection, MessageData } from "./record";
 import type { Time } from "./types";
 import * as TimeUtil from "./TimeUtil";
 
-import { bagConnectionsToTopics, bagConnectionsToDatatypes } from "./BagConnectionsHelper";
+import { bagConnectionsToTopics, bagConnectionsToDatatypes, bagConnectionsToMessageCount } from "./BagConnectionsHelper";
 
 export type ReadOptions = {|
   decompress?: Decompress,
@@ -83,9 +83,11 @@ export default class Bag {
       duration: TimeUtil.sub(endTime, startTime),
       start: TimeUtil.toDate(startTime).toString(),
       end: TimeUtil.toDate(endTime).toString(),
+      size: (this.reader.getFileSize() / 1024 / 1024).toFixed(2) + "MB",
       chunkNum: this.header.chunkCount,
       topics: bagConnectionsToTopics(connections),
       types: bagConnectionsToDatatypes(connections),
+      messageCount: bagConnectionsToMessageCount(this.chunkInfos, connections),
     };
   }
 

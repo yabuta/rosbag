@@ -39,6 +39,10 @@ export default class BagReader {
     this._lastChunkInfo = undefined;
   }
 
+  getFileSize(): number {
+    return this._file.size() || 0;
+  }
+
   verifyBagHeader(callback: Callback<BagHeader>, next: () => void) {
     this._file.read(0, HEADER_OFFSET, (error: Error | null, buffer?: Buffer) => {
       if (error || !buffer) {

@@ -7,7 +7,7 @@
 //  You may not use this file except in compliance with the License.
 
 import { parseMessageDefinition } from "./parseMessageDefinition";
-import { Connection } from "./record";
+import { Connection, ChunkInfo } from "./record";
 
 export type Topic = {|
   // Of ROS topic format, i.e. "/some/topic". We currently depend on this slashes format a bit in
@@ -66,4 +66,38 @@ export function bagConnectionsToTopics(connections: $ReadOnlyArray<Connection>):
   });
   // Satisfy flow by using `Object.keys` instead of `Object.values`
   return Object.keys(topics).map((topic) => topics[topic]);
+}
+
+export function bagConnectionsToMessageCount(
+  chunkInfos: $ReadOnlyArray<ChunkInfo>,
+  connections: $ReadOnlyArray<Connection>
+) {
+  const topics = {};
+  let totalNum: number = 0;
+  chunkInfos.forEach((chunkInfo) => {
+    chunkInfo.connections.forEach((connection) => {
+      const topicName = connections[connection.conn].topic;
+      const existingTopic = topics[topicName];
+      const dataType = connections[connection.conn].type || "";
+      let topicCount = 0;
+      if (existingTopic && existingTopic.datatype !== dataType) {
+        throw new Error(
+          `duplicate topic with differing datatype.exist topic type is  ${existingTopic.datatype}, another type is ${dataType}`
+        );
+      }
+      if (existingTopic && Object.prototype.hasOwnProperty.call(existingTopic, "count")) {
+        topicCount = existingTopic.count + connection.count;
+        topics[topicName] += connection.count;
+      } else {
+        topicCount = connection.count;
+      }
+      topics[topicName] = {
+        datatype: dataType,
+        count: topicCount,
+      };
+      totalNum += connection.count;
+    });
+  });
+
+  return { topics, totalNum };
 }
