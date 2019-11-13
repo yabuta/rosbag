@@ -140,4 +140,9 @@ export default class Bag {
       messages.forEach((msg) => callback(parseMsg(msg, i)));
     }
   }
+
+
+  rosbagCopy(){
+
+  }
 }
