@@ -13,6 +13,8 @@ import { BagHeader, ChunkInfo, Connection, MessageData } from "./record";
 import type { Time } from "./types";
 import * as TimeUtil from "./TimeUtil";
 
+import BagCopy from "./BagCopy";
+
 import { bagConnectionsToTopics, bagConnectionsToDatatypes, bagConnectionsToMessageCount } from "./BagConnectionsHelper";
 
 export type ReadOptions = {|
@@ -142,7 +144,11 @@ export default class Bag {
   }
 
 
-  rosbagCopy(){
+  rosbagCopy(file) {
+    const bagCopy = BagCopy(file);
+    bagCopy.initializeWriter().then( () => {
+      bagCopy.bagCopy();
+    });
 
   }
 }

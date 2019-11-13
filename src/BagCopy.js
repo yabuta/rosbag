@@ -7,6 +7,7 @@
 // @flow
 
 import type { Filelike } from "./types";
+import { MessageData } from "./record";
 
 
 
@@ -19,7 +20,7 @@ import type { Filelike } from "./types";
 // after that you can consume messages by calling
 // `await bag.readMessages({ topics: ['/foo'] },
 //    (result) => console.log(result.topic, result.message))`
-export default class bagCopy {
+export default class BagCopy {
   _file: Filelike;
 
   // you can optionally create a bag manually passing in a bagReader instance
@@ -27,21 +28,39 @@ export default class bagCopy {
     this._file = filelike;
   }
 
+  async initializeWriter(fileHandler) {
+    this._writer = await fileHandler.createWriter({
+      keepExistingData: true
+    });
+  }
 
-  fileRead(startPos, length) {
+
+  fileRead(startPos, length, callback) {
     this._file.read(startPos, length, (error: Error | null, buffer?: Buffer) => {
       if (error || !buffer) {
         throw new Error("Missing read rosbag. start position: " + startPos + "  length: " + length);
       }
-      return buffer;
+      return callback(error, buffer);
     });
   }
 
-  writeBagToNewFile(buffer, length, fileHandler){
-
+  fileReadAsync(startPos, length) {
+    return new Promise((resolve, reject) => {
+      this.fileRead(startPos, length, (err: Error | null, buffer?: Buffer) => (err || !buffer ? reject(err) : resolve(buffer)));
+    });
   }
 
-  rosbagCopy() {
+  async writeBagToNewFile(buffer, startPos) {
+    await this._writer.write(startPos, buffer);
+    await this._writer.close();
+  }
 
+  async bagCopy() {
+    const fileSize = this._file.size() || 0;
+    const length  = 100;
+    for (let startPos = 0; startPos < fileSize; startPos += length) {
+      const buffer = await this.fileReadAsync(startPos, length);
+      await this.writeBagToNewFile(buffer, startPos);
+    }
   }
 }
