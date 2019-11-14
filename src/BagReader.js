@@ -308,4 +308,19 @@ export default class BagReader {
 
     return record;
   }
+
+  fileRead(startPos: number, length: number, callback: Callback<Buffer>) {
+    this._file.read(startPos, length, (error: Error | null, buffer?: Buffer) => {
+      if (error || !buffer) {
+        throw new Error("Missing read rosbag. start position: " + startPos + "  length: " + length);
+      }
+      return callback(error, buffer);
+    });
+  }
+
+  fileReadAsync(startPos: number, length: number): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      this.fileRead(startPos, length, (err: Error | null, buffer?: Buffer) => (err || !buffer ? reject(err) : resolve(buffer)));
+    });
+  }
 }

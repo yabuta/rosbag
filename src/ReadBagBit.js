@@ -7,9 +7,6 @@
 // @flow
 
 import type { Filelike } from "./types";
-import { MessageData } from "./record";
-
-
 
 
 // the high level rosbag interface
@@ -20,7 +17,9 @@ import { MessageData } from "./record";
 // after that you can consume messages by calling
 // `await bag.readMessages({ topics: ['/foo'] },
 //    (result) => console.log(result.topic, result.message))`
-export default class BagCopy {
+
+/*
+export default class ReadBagBit {
   _file: Filelike;
 
   // you can optionally create a bag manually passing in a bagReader instance
@@ -62,5 +61,19 @@ export default class BagCopy {
       const buffer = await this.fileReadAsync(startPos, length);
       await this.writeBagToNewFile(buffer, startPos);
     }
+  }
+}
+ */
+
+export default class ReadBagBit {
+  _file: Filelike;
+
+  // you can optionally create a bag manually passing in a bagReader instance
+  constructor(filelike: Filelike) {
+    this._file = filelike;
+  }
+
+  bagCopy(bag: {}) {
+    console.log(bag);
   }
 }

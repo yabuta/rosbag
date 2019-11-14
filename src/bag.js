@@ -13,7 +13,7 @@ import { BagHeader, ChunkInfo, Connection, MessageData } from "./record";
 import type { Time } from "./types";
 import * as TimeUtil from "./TimeUtil";
 
-import BagCopy from "./BagCopy";
+import ReadBagBit from "./ReadBagBit";
 
 import { bagConnectionsToTopics, bagConnectionsToDatatypes, bagConnectionsToMessageCount } from "./BagConnectionsHelper";
 
@@ -93,6 +93,10 @@ export default class Bag {
     };
   }
 
+  getFileSize() {
+    return this.reader.getFileSize();
+  }
+
   async readMessages(opts: ReadOptions, callback: (msg: ReadResult<any>) => void) {
     const connections = this.connections;
 
@@ -144,11 +148,7 @@ export default class Bag {
   }
 
 
-  rosbagCopy(file) {
-    const bagCopy = BagCopy(file);
-    bagCopy.initializeWriter().then( () => {
-      bagCopy.bagCopy();
-    });
-
+  async readRosbagBit(startPos: number, length: number) {
+    return await this.reader.fileReadAsync(startPos, length);
   }
 }
