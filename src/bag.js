@@ -9,13 +9,13 @@
 import BagReader, { type Decompress } from "./BagReader";
 import { MessageReader } from "./MessageReader";
 import ReadResult from "./ReadResult";
-import { BagHeader, ChunkInfo, Connection, MessageData } from "./record";
+import { BagHeader, Chunk, ChunkInfo, Connection, MessageData } from "./record";
 import type { Time } from "./types";
 import * as TimeUtil from "./TimeUtil";
 
-import ReadBagBit from "./ReadBagBit";
-
 import { bagConnectionsToTopics, bagConnectionsToDatatypes, bagConnectionsToMessageCount } from "./BagConnectionsHelper";
+
+const HEADER_OFFSET = 13;
 
 export type ReadOptions = {|
   decompress?: Decompress,
@@ -75,28 +75,6 @@ export default class Bag {
     }
   }
 
-  getRosbagInfo() {
-    const startTime = this.startTime || { sec: 0, nsec: 0 };
-    const endTime = this.endTime || { sec: 0, nsec: 0 };
-    const connections = ((Object.values(this.connections): any): Connection[]);
-
-    return {
-      version: "2.0",
-      duration: TimeUtil.sub(endTime, startTime),
-      start: TimeUtil.toDate(startTime).toString(),
-      end: TimeUtil.toDate(endTime).toString(),
-      size: (this.reader.getFileSize() / 1024 / 1024).toFixed(2) + "MB",
-      chunkNum: this.header.chunkCount,
-      topics: bagConnectionsToTopics(connections),
-      types: bagConnectionsToDatatypes(connections),
-      messageCount: bagConnectionsToMessageCount(this.chunkInfos, connections),
-    };
-  }
-
-  getFileSize() {
-    return this.reader.getFileSize();
-  }
-
   async readMessages(opts: ReadOptions, callback: (msg: ReadResult<any>) => void) {
     const connections = this.connections;
 
@@ -147,8 +125,73 @@ export default class Bag {
     }
   }
 
+  getRosbagInfo() {
+    const startTime = this.startTime || { sec: 0, nsec: 0 };
+    const endTime = this.endTime || { sec: 0, nsec: 0 };
+    const connections = ((Object.values(this.connections): any): Connection[]);
+
+    return {
+      version: "2.0",
+      duration: TimeUtil.sub(endTime, startTime),
+      start: TimeUtil.toDate(startTime).toString(),
+      end: TimeUtil.toDate(endTime).toString(),
+      size: (this.reader.getFileSize() / 1024 / 1024).toFixed(2) + "MB",
+      chunkNum: this.header.chunkCount,
+      topics: bagConnectionsToTopics(connections),
+      types: bagConnectionsToDatatypes(connections),
+      messageCount: bagConnectionsToMessageCount(this.chunkInfos, connections),
+    };
+  }
+
+  getFileSize() {
+    return this.reader.getFileSize();
+  }
+
+  async validateHeader(): Promise<BagHeader> {
+    this.header = await this.reader.readHeaderAsync();
+    return this.header;
+  }
 
   async readRosbagBit(startPos: number, length: number) {
     return await this.reader.fileReadAsync(startPos, length);
   }
+
+  async getRosbagBuffer(opts: ReadOptions): Promise<Buffer> {
+
+    let rosbagBuffer = Buffer.alloc(HEADER_OFFSET);
+
+    // write version
+    const versionLength = rosbagBuffer.write("#ROSBAG V2.0\n", 0, HEADER_OFFSET);
+    if (versionLength !== HEADER_OFFSET) {
+      throw new Error("Missing to write version to buffer.");
+    }
+
+    const { bagHeaderBuffer, bagHeaderLength } = this.header.composeRecord();
+    rosbagBuffer = Buffer.concat([rosbagBuffer, bagHeaderBuffer], rosbagBuffer.length + bagHeaderLength);
+
+    const chunks = await this.readChunk(opts);
+    chunks.forEach( (chunk) => {
+      const { chunkBuffer, chunkLength } = chunk.composeRecord();
+      rosbagBuffer = Buffer.concat([rosbagBuffer, chunkBuffer], rosbagBuffer.length + chunkLength);
+    });
+
+    return rosbagBuffer;
+  }
+
+  async readChunk(opts: ReadOptions): Promise<Array<Chunk>> {
+    const { decompress = {} } = opts;
+    const chunks = [];
+
+    for (let i = 0; i < this.chunkInfos.length; i++) {
+      const info = this.chunkInfos[i];
+      const chunk = await this.reader.readChunkAsync(
+        info,
+        decompress
+      );
+      chunks.push(chunk);
+    }
+
+    return chunks;
+  }
+
 }

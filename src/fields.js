@@ -46,3 +46,49 @@ export function extractTime(buffer: Buffer, offset: number): Time {
   const nsec = buffer.readUInt32LE(offset + 4);
   return { sec, nsec };
 }
+
+
+// compose header data to bite
+export function composeFields(headers: Array<any>) {
+
+  let fieldsLength = 0;
+
+  headers.forEach( (header) => {
+    fieldsLength += 4 + header.name.length + 1 + header.value.length;
+  });
+
+  const buffer = Buffer.alloc(fieldsLength);
+  let offset = 0;
+
+  headers.forEach( (header) => {
+    const fieldLength = 4 + header.name.length + 1 + header.value.length;
+
+    const index = buffer.writeUInt32LE(fieldLength - 4, offset);
+    if (index !== offset + 4) {
+      throw new Error("Missing to write Header length to buffer." + index);
+    }
+
+    const nameLength = buffer.write(header.name, offset + 4, header.name.length);
+    if (nameLength !== header.name.length) {
+      throw new Error("Missing to write Header name to buffer.");
+    }
+
+    const equalLength = buffer.write("=", offset + 4 + header.name.length, 1);
+    if (equalLength !== 1) {
+      throw new Error("Missing to write '=' to buffer.");
+    }
+
+    const valueLength = header.value.copy(buffer, offset + 4 + header.name.length + 1, 0, header.value.length);
+    if (valueLength !== header.value.length) {
+      throw new Error("Missing to write Header value to buffer.");
+    }
+    offset += fieldLength;
+  });
+
+  if (fieldsLength !== offset) {
+    throw new Error("Written buffer size is not equal to calculated size.");
+  }
+
+  return { buffer, fieldsLength };
+
+}

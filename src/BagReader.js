@@ -323,4 +323,16 @@ export default class BagReader {
       this.fileRead(startPos, length, (err: Error | null, buffer?: Buffer) => (err || !buffer ? reject(err) : resolve(buffer)));
     });
   }
+
+  // promisified version of readChunkMessages
+  readChunkAsync(
+    chunkInfo: ChunkInfo,
+    decompress: Decompress
+  ): Promise<Chunk> {
+    return new Promise((resolve, reject) => {
+      this.readChunk(chunkInfo, decompress, (error: Error | null, result?: ChunkReadResult) => {
+        (error || !result ? reject(error) : resolve(result.chunk));
+      });
+    });
+  }
 }

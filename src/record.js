@@ -12,8 +12,30 @@ import { extractFields, extractTime } from "./fields";
 import { MessageReader } from "./MessageReader";
 import type { Time } from "./types";
 
+import { composeHeader } from "./header";
+
+const HEADER_READAHEAD = 4096;
+
 const readUInt64LE = (buffer: Buffer) => {
   return int53.readUInt64LE(buffer, 0);
+};
+
+const writeUInt64LE = (num: number) => {
+  const buffer = Buffer.alloc(8);
+  int53.writeUInt64LE(num, buffer, 0);
+  return buffer;
+};
+
+const writeUInt32LE = (num: number) => {
+  const buffer = Buffer.alloc(4);
+  buffer.writeUInt32LE(num, 0);
+  return buffer;
+};
+
+const writeUInt8 = (num: number) => {
+  const buffer = Buffer.alloc(1);
+  buffer.writeUInt8(num, 0);
+  return buffer;
 };
 
 export class Record {
@@ -25,6 +47,8 @@ export class Record {
   constructor(_fields: { [key: string]: any }) {}
 
   parseData(_buffer: Buffer) {}
+
+  composeRecord() {}
 }
 
 export class BagHeader extends Record {
@@ -39,6 +63,34 @@ export class BagHeader extends Record {
     this.connectionCount = fields.conn_count.readInt32LE(0);
     this.chunkCount = fields.chunk_count.readInt32LE(0);
   }
+
+  composeRecord() {
+    const headers = [
+      {
+        name: "index_pos",
+        value: writeUInt64LE(this.indexPosition)
+      },
+      {
+        name: "conn_count",
+        value: writeUInt32LE(this.connectionCount)
+      },
+      {
+        name: "chunk_count",
+        value: writeUInt32LE(this.chunkCount)
+      },
+      {
+        name: "op",
+        value: writeUInt8(BagHeader.opcode)
+      }
+    ];
+
+    const { headersBuffer, headersLength } = composeHeader(headers);
+
+    const dataBuffer = Buffer.alloc(HEADER_READAHEAD - headersLength);
+    return {bagHeaderBuffer: Buffer.concat([headersBuffer, dataBuffer], HEADER_READAHEAD), bagHeaderLength: HEADER_READAHEAD};
+
+  }
+
 }
 
 export class Chunk extends Record {
@@ -56,6 +108,29 @@ export class Chunk extends Record {
   parseData(buffer: Buffer) {
     this.data = buffer;
   }
+
+  composeRecord() {
+    const headers = [
+      {
+        name: "compression",
+        value: Buffer.alloc(this.compression.length, this.compression, "ascii")
+      },
+      {
+        name: "size",
+        value: writeUInt32LE(this.size)
+      },
+      {
+        name: "op",
+        value: writeUInt8(Chunk.opcode)
+      }
+    ];
+
+    const { headersBuffer, headersLength } = composeHeader(headers);
+
+    return {chunkBuffer: Buffer.concat([headersBuffer, this.data], headersLength + this.size), chunkLength: headersLength + this.size};
+
+  }
+
 }
 
 const getField = (fields: { [key: string]: Buffer }, key: string) => {

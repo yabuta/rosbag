@@ -61,6 +61,17 @@ const open = async (file: File | string) => {
 };
 Bag.open = open;
 
+export const validateHeader = async (file: File | string) => {
+  if (!(file instanceof Blob)) {
+    throw new Error(
+      "Expected file to be a File or Blob. Make sure you are correctly importing the node or web version of Bag."
+    );
+  }
+  const bag = new Bag(new BagReader(new Reader(file)));
+  const res = await bag.validateHeader();
+  return res;
+};
+
 export * from "../types";
 export { TimeUtil, BagReader, MessageReader, open, parseMessageDefinition, rosPrimitiveTypes };
 export default Bag;
