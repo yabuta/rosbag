@@ -81,8 +81,8 @@ export default class Bag {
     return {
       version: "2.0",
       duration: TimeUtil.sub(endTime, startTime),
-      start: TimeUtil.toDate(startTime).toString(),
-      end: TimeUtil.toDate(endTime).toString(),
+      start: TimeUtil.toDate(startTime).getTime(),
+      end: TimeUtil.toDate(endTime).getTime(),
       size: (this.reader.getFileSize() / 1024 / 1024).toFixed(2) + "MB",
       chunkNum: this.header.chunkCount,
       topics: bagConnectionsToTopics(connections),

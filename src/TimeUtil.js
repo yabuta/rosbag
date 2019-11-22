@@ -67,6 +67,6 @@ export function add(left: Time, right: Time) {
 
 export function sub(left: Time, right: Time) {
   const durationNanos = left.nsec - right.nsec;
-  const subTime = left.sec - right.sec - durationNanos / 1e9;
+  const subTime = left.sec - right.sec + durationNanos / 1e9;
   return Math.abs(subTime);
 }
