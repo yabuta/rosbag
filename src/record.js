@@ -8,7 +8,7 @@
 
 import int53 from "int53";
 
-import { extractFields, extractTime } from "./fields";
+import { extractFields, extractTime, composeTime } from "./fields";
 import { MessageReader } from "./MessageReader";
 import type { Time } from "./types";
 
@@ -84,10 +84,17 @@ export class BagHeader extends Record {
       }
     ];
 
-    const { headersBuffer, headersLength } = composeHeader(headers);
+    const headersBuffer = composeHeader(headers);
 
-    const dataBuffer = Buffer.alloc(HEADER_READAHEAD - headersLength);
-    return {bagHeaderBuffer: Buffer.concat([headersBuffer, dataBuffer], HEADER_READAHEAD), bagHeaderLength: HEADER_READAHEAD};
+    let data = "";
+
+    for (let i = 0; i < HEADER_READAHEAD - headersBuffer.length; i++) {
+      data += " ";
+    }
+    const dataBuffer = Buffer.alloc(HEADER_READAHEAD - headersBuffer.length + 4, data, "ascii");
+    const dataLengthBuffer = writeUInt32LE(dataBuffer.length);
+
+    return Buffer.concat([headersBuffer, dataLengthBuffer, dataBuffer], HEADER_READAHEAD + 8);
 
   }
 
@@ -125,9 +132,10 @@ export class Chunk extends Record {
       }
     ];
 
-    const { headersBuffer, headersLength } = composeHeader(headers);
+    const headersBuffer = composeHeader(headers);
+    const dataLengthBuffer = writeUInt32LE(this.size);
 
-    return {chunkBuffer: Buffer.concat([headersBuffer, this.data], headersLength + this.size), chunkLength: headersLength + this.size};
+    return Buffer.concat([headersBuffer, dataLengthBuffer,  this.data], headersBuffer.length + dataLengthBuffer.length + this.size);
 
   }
 
@@ -158,6 +166,8 @@ export class Connection extends Record {
     this.type = undefined;
     this.md5sum = undefined;
     this.messageDefinition = "";
+    this.callerid = undefined;
+    this.latching = undefined;
   }
 
   parseData(buffer: Buffer) {
@@ -171,6 +181,68 @@ export class Connection extends Record {
     if (fields.latching !== undefined) {
       this.latching = fields.latching.toString() === "1";
     }
+  }
+
+  composeRecord() {
+    const headers = [
+      {
+        name: "conn",
+        value: writeUInt32LE(this.conn)
+      },
+      {
+        name: "topic",
+        value: Buffer.alloc(this.topic.length, this.topic, "ascii")
+      },
+      {
+        name: "op",
+        value: writeUInt8(Connection.opcode)
+      }
+    ];
+    const headersBuffer = composeHeader(headers);
+
+    // connection data is composed similar to header
+    const data = [];
+
+    if (this.type === undefined || this.md5sum === undefined || this.messageDefinition === undefined) {
+      throw new Error("Connection data is undefined");
+    } else {
+
+      const type = this.type ? this.type : "";
+      const md5sum = this.md5sum ? this.md5sum : "";
+
+      data.push({
+        name: "topic",
+        value: Buffer.alloc(this.topic.length, this.topic, "ascii")
+      });
+      data.push({
+        name: "type",
+        value: Buffer.alloc(type.length, type, "ascii")
+      });
+      data.push({
+        name: "md5sum",
+        value: Buffer.alloc(md5sum.length, md5sum, "ascii")
+      });
+      data.push({
+        name: "message_definition",
+        value: Buffer.alloc(this.messageDefinition.length, this.messageDefinition, "ascii")
+      });
+    }
+
+    if (this.callerid !== undefined) {
+      const callerid = this.callerid ? this.callerid : "";
+      data.push({
+        name: "callerid",
+        value: Buffer.alloc(callerid.length, callerid, "ascii")
+      });
+    }
+    if (this.latching !== undefined) {
+      data.push({
+        name: "latching",
+        value: Buffer.alloc(1, this.latching ? "1" : "0", "ascii")
+      });
+    }
+    const composedData = composeHeader(data);
+    return Buffer.concat([headersBuffer, composedData], headersBuffer.length +  composedData.length);
   }
 }
 
@@ -214,6 +286,42 @@ export class IndexData extends Record {
       });
     }
   }
+
+  composeRecord() {
+    const headers = [
+      {
+        name: "ver",
+        value: writeUInt32LE(this.ver)
+      },
+      {
+        name: "conn",
+        value: writeUInt32LE(this.conn)
+      },
+      {
+        name: "count",
+        value: writeUInt32LE(this.count)
+      },
+      {
+        name: "op",
+        value: writeUInt8(IndexData.opcode)
+      }
+    ];
+    const headersBuffer = composeHeader(headers);
+
+    let dataBuffer = Buffer.alloc(0);
+    this.indices.forEach( (indexData) => {
+      const indexDataBuffer = Buffer.alloc(12);
+      indexDataBuffer.writeUInt32LE(indexData.time.sec, 0);
+      indexDataBuffer.writeUInt32LE(indexData.time.nsec, 4);
+      indexDataBuffer.writeUInt32LE(indexData.offset, 8);
+      dataBuffer = Buffer.concat([dataBuffer, indexDataBuffer], dataBuffer.length + indexDataBuffer.length);
+    });
+
+    const dataLengthBuffer = writeUInt32LE(dataBuffer.length);
+
+    return Buffer.concat([headersBuffer, dataLengthBuffer, dataBuffer], headersBuffer.length + dataLengthBuffer.length + dataBuffer.length);
+
+  }
 }
 
 export class ChunkInfo extends Record {
@@ -243,5 +351,48 @@ export class ChunkInfo extends Record {
         count: buffer.readUInt32LE(i * 8 + 4),
       });
     }
+  }
+
+  composeRecord() {
+    const headers = [
+      {
+        name: "ver",
+        value: writeUInt32LE(this.ver)
+      },
+      {
+        name: "chunk_pos",
+        value: writeUInt64LE(this.chunkPosition)
+      },
+      {
+        name: "start_time",
+        value: composeTime(this.startTime)
+      },
+      {
+        name: "end_time",
+        value: composeTime(this.endTime)
+      },
+      {
+        name: "count",
+        value: writeUInt32LE(this.count)
+      },
+      {
+        name: "op",
+        value: writeUInt8(ChunkInfo.opcode)
+      }
+    ];
+    const headersBuffer = composeHeader(headers);
+    let dataBuffer = Buffer.alloc(0);
+
+    this.connections.forEach((connection) => {
+      const connBuffer = Buffer.alloc(8);
+      connBuffer.writeUInt32LE(connection.conn, 0);
+      connBuffer.writeUInt32LE(connection.count, 4);
+      dataBuffer = Buffer.concat([dataBuffer, connBuffer], dataBuffer.length + connBuffer.length);
+    });
+
+    const dataLengthBuffer = writeUInt32LE(dataBuffer.length);
+
+    return Buffer.concat([headersBuffer, dataLengthBuffer, dataBuffer], headersBuffer.length + dataLengthBuffer.length + dataBuffer.length);
+
   }
 }

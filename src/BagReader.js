@@ -171,12 +171,12 @@ export default class BagReader {
       if (error || !result) {
         return callback(error || new Error("Missing both error and result"));
       }
-
       const chunk = result.chunk;
       const indices: { [conn: number]: IndexData } = {};
       result.indices.forEach((index) => {
         indices[index.conn] = index;
       });
+      // console.log(indices);
       const presentConnections = conns.filter((conn) => {
         return indices[conn] !== undefined;
       });
@@ -328,10 +328,10 @@ export default class BagReader {
   readChunkAsync(
     chunkInfo: ChunkInfo,
     decompress: Decompress
-  ): Promise<Chunk> {
+  ): Promise<ChunkReadResult> {
     return new Promise((resolve, reject) => {
       this.readChunk(chunkInfo, decompress, (error: Error | null, result?: ChunkReadResult) => {
-        (error || !result ? reject(error) : resolve(result.chunk));
+        (error || !result ? reject(error) : resolve(result));
       });
     });
   }

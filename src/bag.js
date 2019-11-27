@@ -9,13 +9,18 @@
 import BagReader, { type Decompress } from "./BagReader";
 import { MessageReader } from "./MessageReader";
 import ReadResult from "./ReadResult";
-import { BagHeader, Chunk, ChunkInfo, Connection, MessageData } from "./record";
-import type { Time } from "./types";
+import { BagHeader, Chunk, ChunkInfo, Connection, IndexData, MessageData } from "./record";
+import type { Callback, Time } from "./types";
 import * as TimeUtil from "./TimeUtil";
 
 import { bagConnectionsToTopics, bagConnectionsToDatatypes, bagConnectionsToMessageCount } from "./BagConnectionsHelper";
 
 const HEADER_OFFSET = 13;
+
+interface ChunkReadResult {
+  chunk: Chunk;
+  indices: IndexData[];
+}
 
 export type ReadOptions = {|
   decompress?: Decompress,
@@ -148,7 +153,14 @@ export default class Bag {
   }
 
   async validateHeader(): Promise<BagHeader> {
-    this.header = await this.reader.readHeaderAsync();
+    await this.open();
+    const opt = { startTime: this.startTime || { sec: 0, nsec: 0 }, endTime: this.endTime || { sec: 0, nsec: 0 }, noParse: true };
+    let message = null;
+    await this.readMessages(opt, (msg) => {
+      if (msg.topic === "/decision_maker/state") {
+        message = msg;
+      }
+    });
     return this.header;
   }
 
@@ -166,32 +178,66 @@ export default class Bag {
       throw new Error("Missing to write version to buffer.");
     }
 
-    const { bagHeaderBuffer, bagHeaderLength } = this.header.composeRecord();
-    rosbagBuffer = Buffer.concat([rosbagBuffer, bagHeaderBuffer], rosbagBuffer.length + bagHeaderLength);
+    const bagHeaderBuffer = this.header.composeRecord();
+    rosbagBuffer = Buffer.concat([rosbagBuffer, bagHeaderBuffer], rosbagBuffer.length + bagHeaderBuffer.length);
 
-    const chunks = await this.readChunk(opts);
-    chunks.forEach( (chunk) => {
-      const { chunkBuffer, chunkLength } = chunk.composeRecord();
-      rosbagBuffer = Buffer.concat([rosbagBuffer, chunkBuffer], rosbagBuffer.length + chunkLength);
+    console.log("Bag header is finish");
+
+    const chunkResults = await this.readChunk(opts);
+    let percentage = 0;
+    chunkResults.forEach( (result, index) => {
+      if (Math.floor((index * 100) / chunkResults.length ) !== percentage) {
+        percentage = Math.floor((index * 100) / chunkResults.length );
+        console.log(percentage);
+      }
+
+      const { chunk, indices } = result;
+      const chunkBuffer = chunk.composeRecord();
+      // const chunkRecord = this.reader.readRecordFromBuffer(chunkBuffer, 0, Chunk);
+      rosbagBuffer = Buffer.concat([rosbagBuffer, chunkBuffer], rosbagBuffer.length + chunkBuffer.length);
+      indices.forEach((indexData) => {
+        const indexDataBuffer = indexData.composeRecord();
+        rosbagBuffer = Buffer.concat([rosbagBuffer, indexDataBuffer], rosbagBuffer.length + indexDataBuffer.length);
+      });
     });
+
+    console.log(rosbagBuffer.length, chunkResults.length, this.header.chunkCount);
+
+    Object.keys(this.connections)
+      .forEach((conn: any) => {
+        const connectionBuffer = this.connections[conn].composeRecord();
+        // const connections = this.reader.readRecordFromBuffer(connectionBuffer, 0, Connection);
+
+        rosbagBuffer = Buffer.concat([rosbagBuffer, connectionBuffer], rosbagBuffer.length + connectionBuffer.length);
+      });
+    console.log(rosbagBuffer.length, Object.keys(this.connections).length, this.header.connectionCount);
+
+    this.chunkInfos.forEach( (chunkInfo) => {
+      const chunkInfoBuffer = chunkInfo.composeRecord();
+      const chunkInfoRecord = this.reader.readRecordFromBuffer(chunkInfoBuffer, 0, ChunkInfo);
+      rosbagBuffer = Buffer.concat([rosbagBuffer, chunkInfoBuffer], rosbagBuffer.length + chunkInfoBuffer.length);
+    });
+
+    console.log(rosbagBuffer.length, this.chunkInfos.length);
 
     return rosbagBuffer;
   }
 
-  async readChunk(opts: ReadOptions): Promise<Array<Chunk>> {
+
+  async readChunk(opts: ReadOptions): Promise<Array<ChunkReadResult>> {
     const { decompress = {} } = opts;
-    const chunks = [];
+    const chunkResults = [];
 
     for (let i = 0; i < this.chunkInfos.length; i++) {
       const info = this.chunkInfos[i];
-      const chunk = await this.reader.readChunkAsync(
+      const chunkResult = await this.reader.readChunkAsync(
         info,
         decompress
       );
-      chunks.push(chunk);
+      chunkResults.push(chunkResult);
     }
 
-    return chunks;
+    return chunkResults;
   }
 
 }

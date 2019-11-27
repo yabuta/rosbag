@@ -24,16 +24,14 @@ export function parseHeader<T: Record>(buffer: Buffer, cls: Class<T> & { opcode:
   return new cls(fields);
 }
 
-export function composeHeader (headers: Array<any>): {headersBuffer: Buffer, headersLength: number} {
-  const { buffer, fieldsLength } = composeFields(headers);
-  if (fieldsLength === 0) {
+export function composeHeader (headers: Array<any>): Buffer {
+  const buffer = composeFields(headers);
+  if (buffer.length === 0) {
     throw new Error("Fields is 0 byte");
   }
 
   const headerLengthBuffer = Buffer.alloc(4);
-  headerLengthBuffer.writeUInt32LE(fieldsLength, 0);
+  headerLengthBuffer.writeUInt32LE(buffer.length, 0);
 
-  const headersBuffer = Buffer.concat([headerLengthBuffer, buffer], 4 + fieldsLength);
-
-  return { headersBuffer, headersLength: 4 + fieldsLength};
+  return Buffer.concat([headerLengthBuffer, buffer], 4 + buffer.length);
 }

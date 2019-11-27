@@ -85,10 +85,17 @@ export function composeFields(headers: Array<any>) {
     offset += fieldLength;
   });
 
-  if (fieldsLength !== offset) {
+  if (fieldsLength !== offset || fieldsLength !== buffer.length) {
     throw new Error("Written buffer size is not equal to calculated size.");
   }
 
-  return { buffer, fieldsLength };
+  return buffer;
+}
 
+// reads a Time object out of a buffer at the given offset
+export function composeTime(time: Time): Buffer {
+  const timeBuffer = Buffer.alloc(8);
+  timeBuffer.writeUInt32LE(time.sec, 0);
+  timeBuffer.writeUInt32LE(time.nsec, 4);
+  return timeBuffer;
 }
