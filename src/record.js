@@ -131,11 +131,32 @@ export class Chunk extends Record {
         value: writeUInt8(Chunk.opcode)
       }
     ];
-
     const headersBuffer = composeHeader(headers);
     const dataLengthBuffer = writeUInt32LE(this.size);
 
-    return Buffer.concat([headersBuffer, dataLengthBuffer,  this.data], headersBuffer.length + dataLengthBuffer.length + this.size);
+    return Buffer.concat([headersBuffer, dataLengthBuffer,  this.data], headersBuffer.length + dataLengthBuffer.length + this.data.length);
+  }
+
+  static ComposeRecordFromValue(compression: string, size: number, data: Buffer) {
+    const headers = [
+      {
+        name: "compression",
+        value: Buffer.alloc(compression.length, compression, "ascii")
+      },
+      {
+        name: "size",
+        value: writeUInt32LE(size)
+      },
+      {
+        name: "op",
+        value: writeUInt8(Chunk.opcode)
+      }
+    ];
+
+    const headersBuffer = composeHeader(headers);
+    const dataLengthBuffer = writeUInt32LE(size);
+
+    return Buffer.concat([headersBuffer, dataLengthBuffer,  data], headersBuffer.length + dataLengthBuffer.length + data.length);
 
   }
 
@@ -261,6 +282,29 @@ export class MessageData extends Record {
   parseData(buffer: Buffer) {
     this.data = buffer;
   }
+
+  composeRecord() {
+    const headers = [
+      {
+        name: "conn",
+        value: writeUInt32LE(this.conn)
+      },
+      {
+        name: "time",
+        value: composeTime(this.time)
+      },
+      {
+        name: "op",
+        value: writeUInt8(MessageData.opcode)
+      }
+    ];
+    const headersBuffer = composeHeader(headers);
+
+    const dataLengthBuffer = writeUInt32LE(this.data.length);
+
+    return Buffer.concat([headersBuffer, dataLengthBuffer,  this.data], headersBuffer.length + dataLengthBuffer.length + this.data.length);
+
+  }
 }
 
 export class IndexData extends Record {
@@ -308,15 +352,48 @@ export class IndexData extends Record {
     ];
     const headersBuffer = composeHeader(headers);
 
-    let dataBuffer = Buffer.alloc(0);
-    this.indices.forEach( (indexData) => {
+    const indexDataBuffers = this.indices.map( (indexData) => {
       const indexDataBuffer = Buffer.alloc(12);
       indexDataBuffer.writeUInt32LE(indexData.time.sec, 0);
       indexDataBuffer.writeUInt32LE(indexData.time.nsec, 4);
       indexDataBuffer.writeUInt32LE(indexData.offset, 8);
-      dataBuffer = Buffer.concat([dataBuffer, indexDataBuffer], dataBuffer.length + indexDataBuffer.length);
+      return indexDataBuffer;
     });
+    const dataBuffer = Buffer.concat(indexDataBuffers);
 
+    const dataLengthBuffer = writeUInt32LE(dataBuffer.length);
+
+    return Buffer.concat([headersBuffer, dataLengthBuffer, dataBuffer], headersBuffer.length + dataLengthBuffer.length + dataBuffer.length);
+  }
+
+  static ComposeRecordFromValue(ver: number, conn: number, count: number, indices: Array<{ time: Time, offset: number }>) {
+    const headers = [
+      {
+        name: "ver",
+        value: writeUInt32LE(ver)
+      },
+      {
+        name: "conn",
+        value: writeUInt32LE(conn)
+      },
+      {
+        name: "count",
+        value: writeUInt32LE(count)
+      },
+      {
+        name: "op",
+        value: writeUInt8(IndexData.opcode)
+      }
+    ];
+    const headersBuffer = composeHeader(headers);
+    const indexDataBuffers = indices.map( (indexData) => {
+      const indexDataBuffer = Buffer.alloc(12);
+      indexDataBuffer.writeUInt32LE(indexData.time.sec, 0);
+      indexDataBuffer.writeUInt32LE(indexData.time.nsec, 4);
+      indexDataBuffer.writeUInt32LE(indexData.offset, 8);
+      return indexDataBuffer;
+    });
+    const dataBuffer = Buffer.concat(indexDataBuffers);
     const dataLengthBuffer = writeUInt32LE(dataBuffer.length);
 
     return Buffer.concat([headersBuffer, dataLengthBuffer, dataBuffer], headersBuffer.length + dataLengthBuffer.length + dataBuffer.length);
@@ -333,6 +410,7 @@ export class ChunkInfo extends Record {
   count: number;
   connections: Array<{ conn: number, count: number }>;
   nextChunk: ?ChunkInfo;
+  duration: ?number;
 
   constructor(fields: { [key: string]: Buffer }) {
     super(fields);

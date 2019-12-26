@@ -123,6 +123,7 @@ export default class BagReader {
       if (chunkCount > 0) {
         for (let i = 0; i < chunkCount - 1; i++) {
           chunkInfos[i].nextChunk = chunkInfos[i + 1];
+          chunkInfos[i].duration = chunkInfos[i + 1].chunkPosition - chunkInfos[i].chunkPosition;
         }
         chunkInfos[chunkCount - 1].nextChunk = null;
       }
